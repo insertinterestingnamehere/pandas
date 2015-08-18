@@ -866,38 +866,46 @@ cdef class Int64Factorizer:
         self.count = len(self.uniques)
         return labels
 
+ctypedef fused kh_scalar64:
+    kh_int64_t
+    kh_float64_t
+
 @cython.boundscheck(False)
-cdef build_count_table_scalar64(sixty_four_bit_scalar[:] values, void *table, bint dropna):
+cdef build_count_table_scalar64(sixty_four_bit_scalar[:] values,
+                                kh_scalar64 *table, bint dropna):
     cdef:
         khiter_t k
         Py_ssize_t i, n = len(values)
         sixty_four_bit_scalar val
         int ret = 0
 
-    with nogil:
-        if sixty_four_bit_scalar is float64_t:
-            kh_resize_float64(<kh_float64_t*>table, n)
+    if sixty_four_bit_scalar is float64_t and kh_scalar64 is kh_float64_t:
+        with nogil:
+            kh_resize_float64(table, n)
 
             for i in range(n):
                 val = values[i]
                 if val == val or not dropna:
-                    k = kh_get_float64(<kh_float64_t*>table, val)
-                    if k != (<kh_float64_t*>table).n_buckets:
-                        (<kh_float64_t*>table).vals[k] += 1
+                    k = kh_get_float64(table, val)
+                    if k != table.n_buckets:
+                        table.vals[k] += 1
                     else:
-                        k = kh_put_float64(<kh_float64_t*>table, val, &ret)
-                        (<kh_float64_t*>table).vals[k] = 1
-        elif sixty_four_bit_scalar is int64_t:
-            kh_resize_int64(<kh_int64_t*>table, n)
+                        k = kh_put_float64(table, val, &ret)
+                        table.vals[k] = 1
+    elif sixty_four_bit_scalar is int64_t and kh_scalar64 is kh_int64_t:
+        with nogil:
+            kh_resize_int64(table, n)
 
             for i in range(n):
                 val = values[i]
-                k = kh_get_int64(<kh_int64_t*>table, val)
-                if k != (<kh_int64_t*>table).n_buckets:
-                    (<kh_int64_t*>table).vals[k] += 1
+                k = kh_get_int64(table, val)
+                if k != table.n_buckets:
+                    table.vals[k] += 1
                 else:
-                    k = kh_put_int64(<kh_int64_t*>table, val, &ret)
-                    (<kh_int64_t*>table).vals[k] = 1
+                    k = kh_put_int64(table, val, &ret)
+                    table.vals[k] = 1
+    else:
+        raise ValueError("Table type must match scalar type.")
 
 
 
